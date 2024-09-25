@@ -17,10 +17,11 @@ import org.jetbrains.uast.getContainingUClass
 class GlobalScopeUsageDetector : Detector(), Detector.UastScanner {
 
     companion object {
-        private const val GLOBAL_SCOPE_FULL = "kotlinx.coroutines.GlobalScope"
-        private const val GLOBAL_SCOPE = "GlobalScope"
+        private const val GLOBAL_SCOPE = "kotlinx.coroutines.GlobalScope"
+
         private const val VIEW_MODEL_CLASS_QUALIFIED_NAME = "androidx.lifecycle.ViewModel"
         private const val FRAGMENT_CLASS_QUALIFIED_NAME = "androidx.fragment.app.Fragment"
+
         private const val LIFECYCLE_VIEW_MODEL_DEPENDENCY =
             "androidx.lifecycle:lifecycle-viewmodel-ktx"
         private const val LIFECYCLE_RUNTIME_DEPENDENCY = "androidx.lifecycle:lifecycle-runtime-ktx"
@@ -47,9 +48,9 @@ class GlobalScopeUsageDetector : Detector(), Detector.UastScanner {
 
     override fun createUastHandler(context: JavaContext) = object : UElementHandler() {
         override fun visitSimpleNameReferenceExpression(node: USimpleNameReferenceExpression) {
-            if (node.identifier == GLOBAL_SCOPE) {
+            if (node.identifier == "GlobalScope") {
                 val receiver = context.evaluator.getTypeClass(node.getExpressionType())
-                if (context.evaluator.inheritsFrom(receiver, GLOBAL_SCOPE_FULL, false)) {
+                if (context.evaluator.inheritsFrom(receiver, GLOBAL_SCOPE, false)) {
                     handleGlobalScopeUsage(context, node)
                 }
             }

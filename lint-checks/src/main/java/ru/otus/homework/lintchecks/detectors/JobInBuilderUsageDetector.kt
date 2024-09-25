@@ -8,6 +8,7 @@ import com.android.tools.lint.detector.api.JavaContext
 import com.android.tools.lint.detector.api.LintFix
 import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
+import com.android.tools.lint.detector.api.getUMethod
 import com.intellij.psi.PsiMethod
 import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UElement
@@ -20,10 +21,10 @@ import org.jetbrains.uast.kotlin.KotlinUBinaryExpression
 class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
 
     companion object {
+        private const val COROUTINE_CONTEXT = "kotlin.coroutines.CoroutineContext"
         private const val COROUTINE_SCOPE = "kotlinx.coroutines.CoroutineScope"
         private const val JOB = "kotlinx.coroutines.Job"
-        private const val COMPLETABLE_JOB = "kotlinx.coroutines.CompletableJob"
-        private const val COROUTINE_CONTEXT = "kotlin.coroutines.CoroutineContext"
+        private const val SUPERVISOR_JOB = "kotlinx.coroutines.SupervisorJob"
         private const val NON_CANCELABLE = "kotlinx.coroutines.NonCancellable"
 
         private const val VIEW_MODEL_CLASS_QUALIFIED_NAME = "androidx.lifecycle.ViewModel"
@@ -46,9 +47,7 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
         )
     }
 
-    override fun getApplicableMethodNames(): List<String> {
-        return listOf("launch", "async")
-    }
+    override fun getApplicableMethodNames(): List<String> = listOf("launch", "async")
 
     override fun visitMethodCall(context: JavaContext, node: UCallExpression, method: PsiMethod) {
         val receiver = context.evaluator.getTypeClass(node.receiverType)
@@ -107,24 +106,28 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
     ): Boolean {
         val param = context.evaluator.getTypeClass(node.getExpressionType())
 
-        if (context.evaluator.inheritsFrom(param, COMPLETABLE_JOB, false)) {
-            return true
-        }
+        if (node.isSupervisorJob(context)) return true
 
         if (
             node is KotlinUBinaryExpression
             && context.evaluator.inheritsFrom(param, COROUTINE_CONTEXT, false)
         ) {
             node.operands.forEach {
-                val type = context.evaluator.getTypeClass(it.getExpressionType())
-                if (context.evaluator.inheritsFrom(type, COMPLETABLE_JOB, false)) {
-                    return true
-                }
+                if (it.isSupervisorJob(context)) return true
             }
         }
 
         return false
     }
+
+    private fun UExpression.isSupervisorJob(
+        context: JavaContext
+    ): Boolean = if (this is UCallExpression) {
+        val uMethod = resolve()?.getUMethod()
+        val packageName = context.evaluator.getPackage(uMethod!!)?.qualifiedName
+        val methodName = methodName
+        "$packageName.$methodName" == SUPERVISOR_JOB
+    } else false
 
     private fun createSupervisorJobFix(
         context: JavaContext,
@@ -162,26 +165,18 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
     private fun createNonCancelableJobFix(
         context: JavaContext,
         node: UExpression
-    ): LintFix? {
-        if (isInCoroutine(node)) {
-            return fix()
-                .replace()
-                .range(context.getLocation(node))
-                .text((node as UCallExpression).methodName)
-                .with("withContext")
-                .build()
-        }
+    ): LintFix? =
+        if (isInCoroutine(node)) fix()
+            .replace()
+            .range(context.getLocation(node))
+            .text((node as UCallExpression).methodName)
+            .with("withContext")
+            .build()
+        else null
 
-        return null
-    }
-
-    private fun isInCoroutine(
-        uElement: UElement?
-    ): Boolean {
-        return when {
-            uElement == null || uElement is UMethod -> false
-            uElement is UCallExpression && getApplicableMethodNames().any { it == uElement.methodName } -> true
-            else -> this.isInCoroutine(uElement.uastParent)
-        }
+    private fun isInCoroutine(uElement: UElement?): Boolean = when {
+        uElement == null || uElement is UMethod -> false
+        uElement is UCallExpression && getApplicableMethodNames().any { it == uElement.methodName } -> true
+        else -> this.isInCoroutine(uElement.uastParent)
     }
 }
