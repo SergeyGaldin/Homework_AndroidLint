@@ -13,7 +13,7 @@ import kotlinx.coroutines.channels.actor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class GlobalScopeTestCaseViewModel(private val scope: CoroutineScope) : ViewModel() {
+class GlobalScopeTestCase(private val scope: CoroutineScope) : ViewModel() {
 
     fun case1() {
         GlobalScope.launch {
