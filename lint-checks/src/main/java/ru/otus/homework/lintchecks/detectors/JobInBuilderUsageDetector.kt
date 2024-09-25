@@ -165,14 +165,13 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
     private fun createNonCancelableJobFix(
         context: JavaContext,
         node: UExpression
-    ): LintFix? =
-        if (isInCoroutine(node)) fix()
-            .replace()
-            .range(context.getLocation(node))
-            .text((node as UCallExpression).methodName)
-            .with("withContext")
-            .build()
-        else null
+    ): LintFix? = if (isInCoroutine(node)) fix()
+        .replace()
+        .range(context.getLocation(node))
+        .text((node as UCallExpression).methodName)
+        .with("withContext")
+        .build()
+    else null
 
     private fun isInCoroutine(uElement: UElement?): Boolean = when {
         uElement == null || uElement is UMethod -> false
