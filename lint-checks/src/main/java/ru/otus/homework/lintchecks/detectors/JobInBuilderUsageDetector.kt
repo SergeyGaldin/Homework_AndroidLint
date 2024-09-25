@@ -14,8 +14,15 @@ import org.jetbrains.uast.UCallExpression
 class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
 
     companion object {
+        private const val COROUTINE_SCOPE = "kotlinx.coroutines.CoroutineScope"
+        private const val JOB = "kotlinx.coroutines.Job"
+        private const val SUPERVISOR_JOB = "kotlinx.coroutines.SupervisorJob"
+        private const val COROUTINE_CONTEXT = "kotlin.coroutines.CoroutineContext"
+        private const val NON_CANCELABLE = "kotlinx.coroutines.NonCancellable"
+
         private const val VIEW_MODEL_CLASS_QUALIFIED_NAME = "androidx.lifecycle.ViewModel"
-        private const val LIFECYCLE_VIEW_MODEL_DEPENDENCY = "androidx.lifecycle:lifecycle-viewmodel-ktx"
+        private const val LIFECYCLE_VIEW_MODEL_DEPENDENCY =
+            "androidx.lifecycle:lifecycle-viewmodel-ktx"
 
         val ISSUE: Issue = Issue.create(
             id = "JobInBuilderUsage",
@@ -38,6 +45,23 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
     }
 
     override fun visitMethodCall(context: JavaContext, node: UCallExpression, method: PsiMethod) {
+        val receiver = context.evaluator.getTypeClass(node.receiverType)
+        if (!context.evaluator.inheritsFrom(receiver, COROUTINE_SCOPE, false)) return
 
+        node.valueArguments.forEach { arg ->
+            val param = context.evaluator.getTypeClass(arg.getExpressionType())
+            if (
+                context.evaluator.inheritsFrom(param, JOB, false) ||
+                context.evaluator.inheritsFrom(param, COROUTINE_CONTEXT, false)
+            ) {
+                context.report(
+                    issue = ISSUE,
+                    scope = node,
+                    location = context.getLocation(arg),
+                    message = "Использование Job или SupervisorJob в конструкторе сопрограмм не допускается.",
+                    quickfixData = null
+                )
+            }
+        }
     }
 }
