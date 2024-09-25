@@ -10,7 +10,9 @@ import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
 import com.intellij.psi.PsiMethod
 import org.jetbrains.uast.UCallExpression
+import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UExpression
+import org.jetbrains.uast.UMethod
 import org.jetbrains.uast.getContainingUClass
 import org.jetbrains.uast.kotlin.KotlinUBinaryExpression
 
@@ -79,7 +81,6 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
         parentNode: UExpression
     ): LintFix? {
         val containingClass = node.getContainingUClass()
-        val psiClass = node.getContainingUClass()?.javaPsi
 
         if (
             containingClass?.isExtendClass(VIEW_MODEL_CLASS_QUALIFIED_NAME) == true
@@ -89,12 +90,20 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
             return createSupervisorJobFix(context, node)
         }
 
+        if (
+            containingClass?.isExtendClass(VIEW_MODEL_CLASS_QUALIFIED_NAME) == true
+            && context.isArtifactInDependencies(LIFECYCLE_VIEW_MODEL_DEPENDENCY)
+            && isNonCancelableJob(context, node)
+        ) {
+            return createNonCancelableJobFix(context, parentNode)
+        }
+
         return null
     }
 
     private fun isSupervisorJob(
         context: JavaContext,
-        node: UExpression,
+        node: UExpression
     ): Boolean {
         val param = context.evaluator.getTypeClass(node.getExpressionType())
 
@@ -140,5 +149,39 @@ class JobInBuilderUsageDetector : Detector(), Detector.UastScanner {
             .with(newText)
             .name("Удалить вызов функции SupervisorJob")
             .build()
+    }
+
+    private fun isNonCancelableJob(
+        context: JavaContext,
+        node: UExpression
+    ): Boolean {
+        val param = context.evaluator.getTypeClass(node.getExpressionType())
+        return context.evaluator.inheritsFrom(param, NON_CANCELABLE, false)
+    }
+
+    private fun createNonCancelableJobFix(
+        context: JavaContext,
+        node: UExpression
+    ): LintFix? {
+        if (isInCoroutine(node)) {
+            return fix()
+                .replace()
+                .range(context.getLocation(node))
+                .text((node as UCallExpression).methodName)
+                .with("withContext")
+                .build()
+        }
+
+        return null
+    }
+
+    private fun isInCoroutine(
+        uElement: UElement?
+    ): Boolean {
+        return when {
+            uElement == null || uElement is UMethod -> false
+            uElement is UCallExpression && getApplicableMethodNames().any { it == uElement.methodName } -> true
+            else -> this.isInCoroutine(uElement.uastParent)
+        }
     }
 }
