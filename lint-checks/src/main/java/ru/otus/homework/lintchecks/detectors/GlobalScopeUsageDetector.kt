@@ -1,5 +1,6 @@
 package ru.otus.homework.lintchecks.detectors
 
+import com.android.tools.lint.client.api.UElementHandler
 import com.android.tools.lint.detector.api.Category
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Implementation
@@ -8,19 +9,15 @@ import com.android.tools.lint.detector.api.JavaContext
 import com.android.tools.lint.detector.api.LintFix
 import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
-import com.android.tools.lint.detector.api.SourceCodeScanner
-import com.intellij.psi.PsiMethod
-import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UElement
-import org.jetbrains.uast.UQualifiedReferenceExpression
 import org.jetbrains.uast.USimpleNameReferenceExpression
 import org.jetbrains.uast.getContainingUClass
 
 @Suppress("UnstableApiUsage")
-class GlobalScopeUsageDetector : Detector(), SourceCodeScanner {
+class GlobalScopeUsageDetector : Detector(), Detector.UastScanner {
 
     companion object {
-        private const val GLOBAL_SCOPE = "kotlinx.coroutines.GlobalScope"
+        private const val GLOBAL_SCOPE = "GlobalScope"
         private const val VIEW_MODEL = "androidx.lifecycle.ViewModel"
         private const val FRAGMENT = "androidx.fragment.app.Fragment"
 
@@ -40,14 +37,13 @@ class GlobalScopeUsageDetector : Detector(), SourceCodeScanner {
         )
     }
 
-    override fun getApplicableMethodNames(): List<String> {
-        return listOf("launch", "async")
-    }
+    override fun getApplicableUastTypes(): List<Class<out UElement>> = listOf(
+        USimpleNameReferenceExpression::class.java
+    )
 
-    override fun visitMethodCall(context: JavaContext, node: UCallExpression, method: PsiMethod) {
-        val receiver = (node.receiver as? USimpleNameReferenceExpression)?.identifier
-        if (receiver != null && receiver == "GlobalScope") {
-            handleGlobalScopeUsage(context, node)
+    override fun createUastHandler(context: JavaContext) = object : UElementHandler() {
+        override fun visitSimpleNameReferenceExpression(node: USimpleNameReferenceExpression) {
+            if (node.identifier == GLOBAL_SCOPE) handleGlobalScopeUsage(context, node)
         }
     }
 
