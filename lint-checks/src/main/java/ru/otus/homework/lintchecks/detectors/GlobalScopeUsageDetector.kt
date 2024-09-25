@@ -18,8 +18,11 @@ class GlobalScopeUsageDetector : Detector(), Detector.UastScanner {
 
     companion object {
         private const val GLOBAL_SCOPE = "GlobalScope"
-        private const val VIEW_MODEL = "androidx.lifecycle.ViewModel"
-        private const val FRAGMENT = "androidx.fragment.app.Fragment"
+        private const val VIEW_MODEL_CLASS_QUALIFIED_NAME = "androidx.lifecycle.ViewModel"
+        private const val FRAGMENT_CLASS_QUALIFIED_NAME = "androidx.fragment.app.Fragment"
+        private const val LIFECYCLE_VIEW_MODEL_DEPENDENCY =
+            "androidx.lifecycle:lifecycle-viewmodel-ktx"
+        private const val LIFECYCLE_RUNTIME_DEPENDENCY = "androidx.lifecycle:lifecycle-runtime-ktx"
 
         val ISSUE: Issue = Issue.create(
             id = "GlobalScopeUsage",
@@ -50,47 +53,41 @@ class GlobalScopeUsageDetector : Detector(), Detector.UastScanner {
     private fun handleGlobalScopeUsage(context: JavaContext, node: UElement) {
         val containingClass = node.getContainingUClass() ?: return
 
-        val evaluator = context.evaluator
-        val isViewModel = evaluator.extendsClass(containingClass.javaPsi, VIEW_MODEL, false)
-        val isFragment = evaluator.extendsClass(containingClass.javaPsi, FRAGMENT, false)
+        val fix = when {
+            containingClass.isExtendClass(VIEW_MODEL_CLASS_QUALIFIED_NAME)
+                    && context.isArtifactInDependencies(LIFECYCLE_VIEW_MODEL_DEPENDENCY)
+            -> createFixForViewModel()
 
-        val hasViewModelScope = hasViewModelScope(context)
-        val hasLifecycleScope = hasLifecycleScope(context)
+            containingClass.isExtendClass(FRAGMENT_CLASS_QUALIFIED_NAME)
+                    && context.isArtifactInDependencies(LIFECYCLE_RUNTIME_DEPENDENCY)
+            -> createFixForFragment()
 
-        val fix: LintFix? = if (isViewModel && hasViewModelScope) createFixForViewModel()
-        else if (isFragment && hasLifecycleScope) createFixForFragment()
-        else null
+            else -> null
+        }
 
         context.report(
-            ISSUE,
-            node,
-            context.getLocation(node),
-            "Использование GlobalScope может привести к утечкам памяти",
-            fix
+            issue = ISSUE,
+            scope = node,
+            location = context.getLocation(node),
+            message = "Использование GlobalScope может привести к утечкам памяти",
+            quickfixData = fix
         )
     }
 
-    private fun hasViewModelScope(context: JavaContext): Boolean {
-        return context.evaluator.findClass("androidx.lifecycle.viewModelScope") != null
-    }
+    private fun createFixForViewModel(): LintFix = quickFix(
+        name = "Replace with viewModelScope",
+        scopeReplacement = "viewModelScope"
+    )
 
-    private fun hasLifecycleScope(context: JavaContext): Boolean {
-        return context.evaluator.findClass("androidx.lifecycle.lifecycleScope") != null
-    }
+    private fun createFixForFragment(): LintFix = quickFix(
+        name = "Replace with lifecycleScope",
+        scopeReplacement = "lifecycleScope"
+    )
 
-    private fun createFixForViewModel(): LintFix {
-        return quickFix("Replace with viewModelScope", "viewModelScope")
-    }
-
-    private fun createFixForFragment(): LintFix {
-        return quickFix("Replace with lifecycleScope", "lifecycleScope")
-    }
-
-    private fun quickFix(name: String, scopeReplacement: String): LintFix {
-        return fix().name(name)
-            .replace()
-            .text("GlobalScope")
-            .with(scopeReplacement)
-            .build()
-    }
+    private fun quickFix(name: String, scopeReplacement: String): LintFix = fix()
+        .name(name)
+        .replace()
+        .text("GlobalScope")
+        .with(scopeReplacement)
+        .build()
 }
