@@ -49,7 +49,7 @@ android {
     }
 
     lint {
-        checkOnly("GlobalScopeUsage", "JobInBuilderUsage", "RawColorUsage")
+        checkOnly("GlobalScopeUsage", "JobInBuilderUsage", "ColorUsage")
     }
 }
 
