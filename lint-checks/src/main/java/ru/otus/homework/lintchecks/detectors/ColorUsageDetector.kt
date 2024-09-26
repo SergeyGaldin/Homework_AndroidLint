@@ -73,29 +73,35 @@ class ColorUsageDetector : ResourceXmlDetector() {
     }
 
     override fun afterCheckRootProject(context: Context) {
-        arbitraryColors.forEach {
-            val fixValues = colorMap[it.first]
+        arbitraryColors.forEach { (key, location) ->
+            val fixValues = colorMap[key]
 
-            context.report(
-                ISSUE,
-                it.second,
-                "BRIEF_DESCRIPTION",
-                quickfixData = createFix(fixValues, it.second)
-            )
+            if (!fixValues.isNullOrEmpty()) {
+                context.report(
+                    ISSUE,
+                    location,
+                    "Используемые цвета должны браться из палитры.",
+                    createFix(fixValues[0], location)
+                )
+            } else {
+                context.report(
+                    ISSUE,
+                    location,
+                    "Используемые цвета должны браться из палитры."
+                )
+            }
         }
     }
 
     private fun createFix(
-        fixValues: List<String>?,
+        fixValue: String,
         location: Location
-    ) = fixValues?.let {
-        fix()
-            .replace()
-            .range(location)
-            .all()
-            .with("@color/$it")
-            .build()
-    }
+    ) = fix()
+        .replace()
+        .range(location)
+        .all()
+        .with("@color/$fixValue")
+        .build()
 
     private fun String.isColor(): Boolean = (length == 7 || length == 9) && startsWith("#")
 
